@@ -1,0 +1,197 @@
+---
+title: "MJFF GLP-1RA × PD Power Calculations (Aims 1–3)"
+output:
+  html_docxument:
+    toc: true
+    toc_depth: 2
+    number_sections: false
+    df_print: paged
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+# Reproducible power report for MJFF proposal (Aims 1–3)
+# Assumptions and inputs are defined in ../config/params.yml
+
+library(yaml)
+
+source("../R/power_functions.R")
+p <- yaml::read_yaml("../config/params.yml")
+
+fmt <- function(x, digits=3) formatC(x, digits=digits, format="f")
+fmt_scient <- function(x, digits=2) format(x, digits=digits, scientific=TRUE)
+```
+
+## Inputs (from config/params.yml)
+
+```{r}
+p
+```
+
+## Aim 1 — Metabolically stratified PD GWAS (case-control)
+
+This section reports the **minimum detectable odds ratio (MDE OR)** at the GWAS significance threshold for:
+1) metabolically enriched PD vs controls, and  
+2) non-enriched PD vs controls,  
+across a grid of MAF values.
+
+```{r aim1-table}
+maf_vec <- unlist(p$aim1$maf_vec)
+alpha_gwas <- p$aim1$alpha_gwas
+target_power <- p$aim1$target_power
+coh <- p$aim1$cohorts
+
+aim1_tbl <- do.call(rbind, lapply(names(coh), function(nm){
+  x <- coh[[nm]]
+  Ncase_en <- round(x$Ncase_total * x$subtype_frac)
+  Ncase_non <- x$Ncase_total - Ncase_en
+
+  out <- expand.grid(
+    cohort = nm,
+    maf = maf_vec,
+    comparison = c("PD_met_enriched_vs_ctrl","PD_non_enriched_vs_ctrl"),
+    stringsAsFactors = FALSE
+  )
+  out$Ncase <- ifelse(out$comparison=="PD_met_enriched_vs_ctrl", Ncase_en, Ncase_non)
+  out$Nctrl <- x$Nctrl
+  out$subtype_frac <- x$subtype_frac
+
+  out$MDE_OR_80pct <- mapply(
+    function(nc, n0, mf) gwas_mde_or(nc, n0, mf, alpha_gwas, target_power),
+    out$Ncase, out$Nctrl, out$maf
+  )
+  out
+}))
+
+aim1_tbl
+```
+
+### Aim 1 — Meta-analysis planning across cohorts (enriched PD vs controls)
+
+Here we compute the **effective sample size (Neff)** across cohorts (enriched PD vs controls) and the resulting MDE OR.
+
+```{r aim1-meta}
+Ncase_meta <- sapply(coh, function(x) round(x$Ncase_total * x$subtype_frac))
+Nctrl_meta <- sapply(coh, function(x) x$Nctrl)
+Neff_meta <- meta_neff(Ncase_meta, Nctrl_meta)
+
+data.frame(
+  cohort = names(coh),
+  Ncase_enriched = as.integer(Ncase_meta),
+  Nctrl = as.integer(Nctrl_meta)
+)
+
+cat("\nMeta Neff (enriched vs ctrl) =", round(Neff_meta), "\n")
+
+meta_mde <- sapply(maf_vec, function(m) meta_mde_or(Neff_meta, m, alpha_gwas, target_power))
+data.frame(maf = maf_vec, MDE_OR_80pct = meta_mde)
+```
+
+## Aim 1 add-on — GLP1R drug-target MR (planning placeholder)
+
+This is a **planning calculation** for drug-target MR power. It requires an estimate of total instrument strength (**R²**) for the GLP1R cis-eQTL/pQTL instrument(s). Edit `aim1_mr` in `params.yml` when you have an empirical R².
+
+```{r aim1-mr}
+mr <- p$aim1_mr
+mr_out <- mr_power_placeholder(
+  Neff_outcome = Neff_meta,
+  R2_total = mr$R2_total,
+  OR_causal = mr$OR_causal,
+  alpha = mr$alpha_mr
+)
+mr_out
+```
+
+## Aim 2 — Proteomics: differential expression and subtype definition (planning)
+
+This section approximates power for detecting standardized mean differences (**Cohen's d**) between metabolically enriched vs non-enriched PD subgroups (or other contrasts), under a Bonferroni-style alpha.
+
+```{r aim2-power}
+a2 <- p$aim2
+pw2 <- sapply(unlist(a2$d_vec), function(d) t_test_power(a2$n_enriched, a2$n_non_enriched, d, a2$alpha_prot))
+data.frame(
+  n_enriched = a2$n_enriched,
+  n_non_enriched = a2$n_non_enriched,
+  alpha = a2$alpha_prot,
+  d = unlist(a2$d_vec),
+  power = pw2
+)
+```
+
+## Aim 3 — CPRD: incident PD (Cox) and progression proxy (LEDD slope)
+
+### Aim 3a — Incident PD: event-based Cox power
+
+Power depends primarily on the number of incident PD events in the analysis (after eligibility, new-user design, matching/weighting). We report power for a target HR and the number of events required for 80% power.
+
+```{r aim3-incident}
+a3i <- p$aim3_incident
+list(
+  power_incident = cox_power_from_events(
+    events = a3i$events_incident_pd,
+    HR = a3i$HR_target,
+    alpha = a3i$alpha,
+    p_exposed = a3i$p_exposed
+  ),
+  events_required_for_80pct = events_required_cox(
+    HR = a3i$HR_target,
+    alpha = a3i$alpha,
+    power = 0.8,
+    p_exposed = a3i$p_exposed
+  )
+)
+```
+
+### Aim 3b — Progression: LEDD slope difference (planning)
+
+This is a planning calculation using a simplified model where each individual contributes an estimated LEDD slope; replace `sigma_slope` with an empirical SD if available.
+
+```{r aim3-ledd}
+a3l <- p$aim3_ledd
+list(
+  power_ledd = ledd_slope_power(
+    n1 = a3l$n_exposed_pd,
+    n2 = a3l$n_comp_pd,
+    delta_slope = a3l$delta_slope,
+    sigma_slope = a3l$sigma_slope,
+    alpha = a3l$alpha
+  ),
+  assumptions = a3l
+)
+```
+
+### Aim 3c — Effect modification: interaction between metabolic strata
+
+This approximates power to detect heterogeneity (difference in log-HR) between two predefined strata (e.g., insulin-resistant vs non-insulin-resistant), given event counts in each stratum.
+
+```{r aim3-interaction}
+a3x <- p$aim3_interaction
+interaction_power_two_strata(
+  events_s1 = a3x$events_stratum1,
+  events_s2 = a3x$events_stratum2,
+  HR_s1 = a3x$HR_s1,
+  HR_s2 = a3x$HR_s2,
+  alpha = a3x$alpha,
+  p_exposed_s1 = a3x$p_exposed_s1,
+  p_exposed_s2 = a3x$p_exposed_s2
+)
+```
+
+## Summary (copy-ready text)
+
+```{r summary-text}
+# Aim 1: show meta MDE at common MAFs
+summ_aim1 <- data.frame(
+  maf = maf_vec,
+  MDE_OR_80pct_meta_enriched = meta_mde
+)
+
+# Aim 3: Cox and LEDD
+summ_aim3 <- list(
+  incident_power = cox_power_from_events(a3i$events_incident_pd, a3i$HR_target, a3i$alpha, a3i$p_exposed),
+  incident_events_needed_80 = events_required_cox(a3i$HR_target, a3i$alpha, 0.8, a3i$p_exposed),
+  ledd_power = ledd_slope_power(a3l$n_exposed_pd, a3l$n_comp_pd, a3l$delta_slope, a3l$sigma_slope, a3l$alpha)
+)
+
+summ_aim1
+summ_aim3
+```

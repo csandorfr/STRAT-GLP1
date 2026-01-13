@@ -15,3 +15,21 @@ renv::restore()
 
 # run power calculations
 source("R/run_power.R")
+
+rmarkdown::render("reports/power_report.Rmd")
+The report will be saved to reports/power_report.html.
+
+Inputs
+
+Edit config/params.yml to update cohort sizes, subtype fractions, MAF grid, alpha thresholds,
+expected event counts, and LEDD slope assumptions.
+
+Notes / assumptions
+	•	GWAS uses standard effective sample size + allelic test approximation.
+	•	Cox power uses Schoenfeld event-based approximation.
+	•	LEDD slope power is a planning approximation; replace with empirical slope SD if available.
+	•	MR power requires instrument strength (R²) from cis-eQTL/pQTL instruments.
+
+Contact
+
+Cynthia Sandor lb / Webber group collaboration.

@@ -1,0 +1,46 @@
+## config/params.yml
+```yaml
+aim1:
+  alpha_gwas: 5e-8
+  target_power: 0.80
+  maf_vec: [0.05, 0.10, 0.20]
+  cohorts:
+    UKBB: { Ncase_total: 4000, Nctrl: 350000, subtype_frac: 0.30 }
+    FINNGEN: { Ncase_total: 10000, Nctrl: 250000, subtype_frac: 0.30 }
+    AOU: { Ncase_total: 3000, Nctrl: 250000, subtype_frac: 0.30 }
+    OFH: { Ncase_total: 2000, Nctrl: 300000, subtype_frac: 0.30 }
+
+aim1_mr:
+  alpha_mr: 0.05
+  # placeholder until you estimate from GTEx/other cis instruments
+  R2_total: 0.005
+  OR_causal: 0.90
+
+aim2:
+  # example: Bonferroni across ~3000 proteins (edit)
+  alpha_prot: 0.0000167
+  n_enriched: 300
+  n_non_enriched: 700
+  d_vec: [0.10, 0.15, 0.20, 0.25]
+
+aim3_incident:
+  alpha: 0.05
+  p_exposed: 0.20
+  events_incident_pd: 3000
+  HR_target: 0.85
+
+aim3_ledd:
+  alpha: 0.05
+  n_exposed_pd: 1500
+  n_comp_pd: 4500
+  delta_slope: 50
+  sigma_slope: 250
+
+aim3_interaction:
+  alpha: 0.05
+  events_stratum1: 1200
+  events_stratum2: 1800
+  HR_s1: 0.75
+  HR_s2: 0.95
+  p_exposed_s1: 0.20
+  p_exposed_s2: 0.20
